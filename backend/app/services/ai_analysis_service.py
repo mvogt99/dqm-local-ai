@@ -123,3 +123,18 @@ async def get_ai_analysis_service(pool=None) -> AIAnalysisService:
     if _ai_analysis_service is None:
         _ai_analysis_service = AIAnalysisService(pool)
     return _ai_analysis_service
+
+
+# Backward compatibility wrapper for api_routes.py
+async def analyze_data_quality(profile_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Backward-compatible wrapper for AI analysis.
+
+    Args:
+        profile_data: Profiling results to analyze
+
+    Returns:
+        Analysis results with insights
+    """
+    service = await get_ai_analysis_service()
+    return await service.analyze_profile(profile_data)

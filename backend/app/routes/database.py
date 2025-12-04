@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 
-from app.config.database import get_database_manager, DatabaseConnection
+from app.db_config.database import get_database_manager, DatabaseConnection
 
 router = APIRouter(
     prefix="/database",
