@@ -10,9 +10,18 @@ const App = () => {
   const [selectedTable, setSelectedTable] = useState(null);
   const [profileData, setProfileData] = useState(null);
   const [rules, setRules] = useState([]);
+  const [customRules, setCustomRules] = useState([]);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [showAddRule, setShowAddRule] = useState(false);
+  const [newRule, setNewRule] = useState({
+    name: '',
+    column: '',
+    rule_type: 'null_check',
+    severity: 'warning',
+    definition: ''
+  });
 
   // Fetch tables on mount
   useEffect(() => {
@@ -76,9 +85,18 @@ const App = () => {
     try {
       setLoading(true);
       setError(null);
-      const issues = rules.length > 0
-        ? rules.filter(r => r.severity === 'high').map(r => r.description || r.rule_type)
-        : ['No specific issues identified'];
+
+      // Build comprehensive issues list from ALL rules (auto-generated + custom)
+      const allRules = getAllRules();
+      const issues = allRules.length > 0
+        ? allRules.map(r => ({
+            rule_type: r.rule_type,
+            column: r.column,
+            severity: r.severity,
+            reason: r.reason || r.definition,
+            is_custom: r.is_custom || false
+          }))
+        : [{ rule_type: 'general', description: 'No specific issues identified' }];
 
       const response = await axios.post(`${API_BASE}/ai-analysis/analyze`, {
         table_name: selectedTable,
@@ -98,6 +116,41 @@ const App = () => {
     setActiveTab(tab);
     setError(null);
   };
+
+  const addCustomRule = async () => {
+    if (!newRule.name || !newRule.column) {
+      setError('Please fill in rule name and column');
+      return;
+    }
+
+    const rule = {
+      name: newRule.name,
+      table: selectedTable,
+      column: newRule.column,
+      rule_type: newRule.rule_type,
+      severity: newRule.severity,
+      definition: newRule.definition || `SELECT * FROM ${selectedTable} WHERE ${newRule.column} IS NULL`,
+      reason: 'User-defined rule',
+      is_custom: true
+    };
+
+    try {
+      // Try to save to backend
+      await axios.post(`${API_BASE}/data-quality/rules`, rule);
+    } catch (err) {
+      console.log('Note: Backend rule storage not available, storing locally');
+    }
+
+    setCustomRules([...customRules, rule]);
+    setNewRule({ name: '', column: '', rule_type: 'null_check', severity: 'warning', definition: '' });
+    setShowAddRule(false);
+  };
+
+  const removeCustomRule = (index) => {
+    setCustomRules(customRules.filter((_, i) => i !== index));
+  };
+
+  const getAllRules = () => [...rules, ...customRules];
 
   return (
     <div className="App">
@@ -191,23 +244,128 @@ const App = () => {
               <p>Select a table from the Tables tab first.</p>
             ) : (
               <>
-                {rules.length > 0 && (
-                  <div className="rules-list">
-                    {rules.map((rule, idx) => (
-                      <div key={idx} className={`rule-card ${rule.severity || 'medium'}`}>
-                        <div className="rule-header">
-                          <span className="rule-type">{rule.rule_type || rule.type || 'Rule'}</span>
-                          <span className={`severity ${rule.severity || 'medium'}`}>{rule.severity || 'medium'}</span>
-                        </div>
-                        <p className="rule-desc">{rule.description || rule.message || 'Quality rule'}</p>
-                        {rule.sql_check && <code className="rule-sql">{rule.sql_check}</code>}
+                {/* Rules Table */}
+                {getAllRules().length > 0 && (
+                  <table className="data-table rules-table">
+                    <thead>
+                      <tr>
+                        <th>Rule Name</th>
+                        <th>Column</th>
+                        <th>Type</th>
+                        <th>Severity</th>
+                        <th>Reason</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getAllRules().map((rule, idx) => (
+                        <tr key={idx} className={`rule-row ${rule.severity || 'warning'}`}>
+                          <td>{rule.name}</td>
+                          <td><strong>{rule.column}</strong></td>
+                          <td>
+                            <span className={`rule-type-badge ${rule.rule_type}`}>
+                              {rule.rule_type?.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`severity-badge ${rule.severity || 'warning'}`}>
+                              {rule.severity || 'warning'}
+                            </span>
+                          </td>
+                          <td>{rule.reason || '-'}</td>
+                          <td>
+                            {rule.is_custom && (
+                              <button
+                                className="remove-btn"
+                                onClick={() => removeCustomRule(customRules.indexOf(rule))}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Add Rule Form */}
+                {showAddRule && (
+                  <div className="add-rule-form">
+                    <h3>Add Custom Rule</h3>
+                    <div className="form-grid">
+                      <div className="form-group">
+                        <label>Rule Name</label>
+                        <input
+                          type="text"
+                          value={newRule.name}
+                          onChange={(e) => setNewRule({...newRule, name: e.target.value})}
+                          placeholder="e.g., check_customer_email"
+                        />
                       </div>
-                    ))}
+                      <div className="form-group">
+                        <label>Column</label>
+                        <select
+                          value={newRule.column}
+                          onChange={(e) => setNewRule({...newRule, column: e.target.value})}
+                        >
+                          <option value="">Select column</option>
+                          {profileData?.columns?.map(col => (
+                            <option key={col.column_name} value={col.column_name}>
+                              {col.column_name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Rule Type</label>
+                        <select
+                          value={newRule.rule_type}
+                          onChange={(e) => setNewRule({...newRule, rule_type: e.target.value})}
+                        >
+                          <option value="null_check">Null Check</option>
+                          <option value="not_null">Not Null</option>
+                          <option value="unique_check">Unique Check</option>
+                          <option value="range_check">Range Check</option>
+                          <option value="pattern_check">Pattern Check</option>
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Severity</label>
+                        <select
+                          value={newRule.severity}
+                          onChange={(e) => setNewRule({...newRule, severity: e.target.value})}
+                        >
+                          <option value="info">Info</option>
+                          <option value="warning">Warning</option>
+                          <option value="critical">Critical</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>SQL Definition (optional)</label>
+                      <textarea
+                        value={newRule.definition}
+                        onChange={(e) => setNewRule({...newRule, definition: e.target.value})}
+                        placeholder="SELECT * FROM table WHERE column IS NULL"
+                      />
+                    </div>
+                    <div className="form-actions">
+                      <button onClick={addCustomRule} className="primary">Add Rule</button>
+                      <button onClick={() => setShowAddRule(false)}>Cancel</button>
+                    </div>
                   </div>
                 )}
-                <button onClick={fetchRules} disabled={!selectedTable || loading}>
-                  {loading ? 'Generating...' : rules.length > 0 ? 'Regenerate Rules' : 'Generate Rules'}
-                </button>
+
+                {/* Action Buttons */}
+                <div className="rules-actions">
+                  <button onClick={fetchRules} disabled={!selectedTable || loading}>
+                    {loading ? 'Generating...' : rules.length > 0 ? 'Regenerate Rules' : 'Generate Rules'}
+                  </button>
+                  <button onClick={() => setShowAddRule(!showAddRule)} className="secondary">
+                    {showAddRule ? 'Cancel' : '+ Add Custom Rule'}
+                  </button>
+                </div>
               </>
             )}
           </div>

@@ -13,19 +13,115 @@ class DataQualityRulesService:
         self.dsn = dsn
 
     async def suggest_rules(self, profiling_results: List[Dict]) -> List[Dict]:
-        """Suggest data quality rules based on profiling results."""
+        """
+        Suggest data quality rules based on profiling results.
+
+        Rule Types:
+        - null_check: For columns with null values
+        - unique_check: For columns that appear to be unique identifiers
+        - range_check: For numeric columns with potential outliers
+        - pattern_check: For string columns with consistent patterns
+        - not_null: For critical columns that should never be null
+
+        Enhanced by RTX 5090 to provide diverse, column-specific rules.
+        """
         suggested_rules = []
+
         for result in profiling_results:
-            null_pct = result.get('null_percentage', 0)
-            if null_pct and null_pct > 0.1:
+            table = result.get('table', 'unknown')
+            column = result.get('column', 'unknown')
+            null_pct = result.get('null_percentage', 0) or 0
+            unique_count = result.get('unique_count', 0) or 0
+            data_type = result.get('data_type', '').lower()
+
+            # Rule 1: NULL Check - For columns with nulls
+            if null_pct > 0.01:  # More than 1% nulls
+                severity = 'critical' if null_pct > 0.1 else 'warning' if null_pct > 0.05 else 'info'
                 suggested_rules.append({
-                    'name': f"{result.get('table', 'unknown')}_{result.get('column', 'unknown')}_null_check",
-                    'table': result.get('table', ''),
-                    'column': result.get('column', ''),
+                    'name': f"null_check_{table}_{column}",
+                    'table': table,
+                    'column': column,
                     'rule_type': 'null_check',
-                    'definition': f"SELECT COUNT(*) FROM {result.get('table', '')} WHERE {result.get('column', '')} IS NULL",
-                    'severity': 'medium'
+                    'definition': f"SELECT * FROM {table} WHERE {column} IS NULL",
+                    'severity': severity,
+                    'reason': f"Column has {null_pct*100:.1f}% null values",
+                    'threshold': 0 if null_pct < 0.05 else 5
                 })
+
+            # Rule 2: NOT NULL Check - For columns that SHOULD be null-free
+            if null_pct == 0 and column.lower() in ['id', 'name', 'email', 'customer_id', 'order_id', 'product_id']:
+                suggested_rules.append({
+                    'name': f"not_null_{table}_{column}",
+                    'table': table,
+                    'column': column,
+                    'rule_type': 'not_null',
+                    'definition': f"SELECT * FROM {table} WHERE {column} IS NULL",
+                    'severity': 'critical',
+                    'reason': f"Critical column should never be null"
+                })
+
+            # Rule 3: Unique Check - For columns that appear to be unique
+            if unique_count > 0 and column.lower().endswith(('_id', 'id', 'email', 'phone', 'code')):
+                suggested_rules.append({
+                    'name': f"unique_check_{table}_{column}",
+                    'table': table,
+                    'column': column,
+                    'rule_type': 'unique_check',
+                    'definition': f"SELECT {column}, COUNT(*) FROM {table} GROUP BY {column} HAVING COUNT(*) > 1",
+                    'severity': 'warning',
+                    'reason': f"Column appears to be a unique identifier"
+                })
+
+            # Rule 4: Range Check - For numeric columns
+            if data_type in ['integer', 'numeric', 'decimal', 'float', 'double', 'int', 'bigint', 'smallint']:
+                if column.lower() in ['price', 'unit_price', 'amount', 'total', 'cost', 'quantity', 'units_in_stock']:
+                    suggested_rules.append({
+                        'name': f"range_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'range_check',
+                        'definition': f"SELECT * FROM {table} WHERE {column} < 0",
+                        'severity': 'critical',
+                        'reason': f"Numeric column should have non-negative values",
+                        'min_value': 0
+                    })
+
+            # Rule 5: Pattern Check - For string columns with expected formats
+            if data_type in ['varchar', 'text', 'character varying', 'char']:
+                if 'email' in column.lower():
+                    suggested_rules.append({
+                        'name': f"pattern_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'pattern_check',
+                        'definition': f"SELECT * FROM {table} WHERE {column} !~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{{2,}}$'",
+                        'severity': 'warning',
+                        'reason': f"Email column should match email format",
+                        'pattern': '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$'
+                    })
+                elif 'phone' in column.lower():
+                    suggested_rules.append({
+                        'name': f"pattern_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'pattern_check',
+                        'definition': f"SELECT * FROM {table} WHERE {column} !~ '^[0-9()\\-+ ]+$'",
+                        'severity': 'info',
+                        'reason': f"Phone column should contain valid phone characters",
+                        'pattern': '^[0-9()\\-+ ]+$'
+                    })
+                elif 'postal' in column.lower() or 'zip' in column.lower():
+                    suggested_rules.append({
+                        'name': f"pattern_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'pattern_check',
+                        'definition': f"SELECT * FROM {table} WHERE {column} !~ '^[A-Za-z0-9 -]+$'",
+                        'severity': 'info',
+                        'reason': f"Postal code should match expected format",
+                        'pattern': '^[A-Za-z0-9 -]+$'
+                    })
+
         return suggested_rules
 
     async def create_rule(self, name: str, table: str, column: str, rule_type: str, definition: str, severity: str):
