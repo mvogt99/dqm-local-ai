@@ -19,7 +19,7 @@ from app.services.ai_analysis_service import analyze_data_quality
 router = APIRouter(prefix="/api")
 
 # Database URL
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dqm_user:dqm_pass@localhost:5432/northwind")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dqm_user:dqm_password@localhost:5432/northwind")
 
 # Table whitelist
 TABLE_WHITELIST = {"customers", "orders", "products", "employees", "suppliers",

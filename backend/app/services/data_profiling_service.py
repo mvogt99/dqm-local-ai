@@ -11,7 +11,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dqm_user:dqm_pass@localhost:5432/northwind")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://dqm_user:dqm_password@localhost:5432/northwind")
 TABLE_WHITELIST = {"customers", "orders", "products", "employees", "order_details",
                    "categories", "shippers", "suppliers", "territories", "region"}
 
