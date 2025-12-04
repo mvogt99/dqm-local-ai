@@ -13,7 +13,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Callable, Awaitable
 
-# Import REAL routes
+# Import domain-separated routes
+from app.routes import (
+    data_profiling_router,
+    data_quality_router,
+    ai_analysis_router
+)
+# Legacy routes for backward compatibility
 from app.api_routes import router as api_router
 # Import profiling service for initialization
 from app.services.data_profiling_service import get_profiling_service, _profiling_service
@@ -134,5 +140,10 @@ async def root():
     }
 
 
-# Include REAL API routes
+# Include domain-separated routes (Expert AI pattern)
+app.include_router(data_profiling_router)
+app.include_router(data_quality_router)
+app.include_router(ai_analysis_router)
+
+# Include legacy API routes for backward compatibility
 app.include_router(api_router)
