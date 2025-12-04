@@ -67,3 +67,73 @@ async def run_profile(table: str):
     This endpoint matches the Expert AI pattern for compatibility.
     """
     return await profile_table(table)
+
+
+@router.post("/profile/{table}/store")
+async def profile_and_store(table: str):
+    """
+    Profile a table and store results for rule suggestion.
+
+    Profiles the table and stores results in the database for later
+    use by the rule suggestion endpoint.
+    """
+    if table not in settings.TABLE_WHITELIST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Table '{table}' is not in the whitelist. Allowed: {sorted(settings.TABLE_WHITELIST)}"
+        )
+
+    try:
+        service = await get_profiling_service()
+        profile = await service.profile_and_store(table)
+        return {
+            "message": f"Profile stored for table {table}",
+            "table_name": table,
+            "columns_profiled": len(profile.columns),
+            "row_count": profile.row_count
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to profile and store: {str(e)}")
+
+
+@router.post("/profile/all/store")
+async def profile_all_and_store():
+    """
+    Profile all whitelisted tables and store results.
+
+    This endpoint profiles all available tables and stores the results
+    for later use by the rule suggestion endpoint.
+    """
+    try:
+        service = await get_profiling_service()
+        profiles = await service.profile_all_tables()
+        return {
+            "message": f"Profiled and stored {len(profiles)} tables",
+            "tables": [p.table_name for p in profiles],
+            "total_columns": sum(len(p.columns) for p in profiles)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to profile all tables: {str(e)}")
+
+
+@router.get("/results")
+async def get_stored_results(table_name: str = None, limit: int = 50):
+    """
+    Get stored profiling results.
+
+    Returns previously stored profiling results, optionally filtered by table.
+    """
+    try:
+        service = await get_profiling_service()
+        results = await service.get_stored_results(table_name=table_name, limit=limit)
+        return {
+            "results": results,
+            "count": len(results),
+            "table_filter": table_name
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stored results: {str(e)}")

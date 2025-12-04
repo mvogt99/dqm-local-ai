@@ -17,7 +17,8 @@ from typing import Callable, Awaitable
 from app.routes import (
     data_profiling_router,
     data_quality_router,
-    ai_analysis_router
+    ai_analysis_router,
+    database_router
 )
 # Legacy routes for backward compatibility
 from app.api_routes import router as api_router
@@ -144,6 +145,7 @@ async def root():
 app.include_router(data_profiling_router)
 app.include_router(data_quality_router)
 app.include_router(ai_analysis_router)
+app.include_router(database_router)  # V74: Dynamic database configuration
 
 # Include legacy API routes for backward compatibility
 app.include_router(api_router)
