@@ -27,6 +27,57 @@ class BatchAnalysisRequest(BaseModel):
     tables: List[Dict[str, Any]]
 
 
+class FrontendAnalysisRequest(BaseModel):
+    """Request model matching frontend format - Fixed by RTX 3050."""
+    table_name: str
+    profile_data: Dict[str, Any]
+    issues: List[Any]  # Maps to 'violations' in backend
+
+
+@router.post("/analyze")
+async def analyze_from_frontend(request: FrontendAnalysisRequest = Body(...)):
+    """
+    Analyze data quality from frontend request format.
+
+    Fixed by RTX 3050 to accept frontend format with table_name in body
+    and issues mapped to violations.
+
+    Uses LOCAL AI (RTX 5090) for root cause analysis.
+    """
+    try:
+        # Map frontend 'issues' to backend 'violations'
+        violations = []
+        for issue in request.issues:
+            if isinstance(issue, dict):
+                violations.append(issue)
+            else:
+                violations.append({
+                    "rule_type": "general",
+                    "description": str(issue),
+                    "violation_count": 1
+                })
+
+        result = await analyze_data_quality(
+            violations=violations,
+            profile_data=request.profile_data,
+            table_name=request.table_name
+        )
+
+        return {
+            "table_name": request.table_name,
+            "analysis": result.raw_response,
+            "root_causes": result.root_causes,
+            "recommendations": result.recommendations,
+            "confidence": result.confidence_score,
+            "additional_rules": result.additional_rules
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI analysis failed: {str(e)}"
+        )
+
+
 @router.post("/analyze/{table_name}")
 async def analyze_table_violations(table_name: str, request: AnalysisRequest = Body(...)):
     """
