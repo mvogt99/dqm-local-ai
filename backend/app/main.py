@@ -19,7 +19,9 @@ from app.routes import (
     data_quality_router,
     ai_analysis_router,
     database_router,
-    audit_router
+    audit_router,
+    lineage_router,
+    reports_router
 )
 # Legacy routes for backward compatibility
 from app.api_routes import router as api_router
@@ -148,6 +150,8 @@ app.include_router(data_quality_router)
 app.include_router(ai_analysis_router)
 app.include_router(database_router)  # V74: Dynamic database configuration
 app.include_router(audit_router)  # V76: Audit logging
+app.include_router(lineage_router)  # V77: Data lineage tracking
+app.include_router(reports_router)  # V77: Report generation
 
 # Include legacy API routes for backward compatibility
 app.include_router(api_router)
