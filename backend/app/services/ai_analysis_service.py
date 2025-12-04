@@ -55,8 +55,13 @@ class AIAnalysisService:
 
         for col in columns:
             col_name = col.get("column_name", "")
-            null_pct = col.get("null_percentage", 0) or 0
+            # Support both null_percent (from profiling) and null_percentage (legacy)
+            null_pct = col.get("null_percent", col.get("null_percentage", 0)) or 0
+            # Calculate distinct percentage from unique_count if available
             distinct_pct = col.get("distinct_percentage", 0) or 0
+            if distinct_pct == 0 and row_count > 0:
+                unique_count = col.get("unique_count", 0) or 0
+                distinct_pct = (unique_count / row_count * 100) if unique_count > 0 else 0
 
             if null_pct > 50:
                 insights.append(Insight(

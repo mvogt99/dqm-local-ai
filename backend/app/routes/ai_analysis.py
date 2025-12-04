@@ -34,7 +34,10 @@ async def analyze_data_quality(request: AnalysisRequest):
         # Get profiling data
         if request.table_name:
             profile = await profiling_service.profile_table(request.table_name)
-            profile_data = profile.dict() if hasattr(profile, 'dict') else profile
+            # Use to_dict() for TableProfile dataclass
+            profile_data = profile.to_dict() if hasattr(profile, 'to_dict') else (
+                profile.dict() if hasattr(profile, 'dict') else profile
+            )
         else:
             tables = await profiling_service.get_tables()
             profile_data = {"tables": tables[:5]}  # Limit for demo
@@ -86,7 +89,10 @@ async def get_table_insights(table_name: str):
         profiling_service = await get_profiling_service()
         
         profile = await profiling_service.profile_table(table_name)
-        profile_data = profile.dict() if hasattr(profile, 'dict') else {"table_name": table_name, "columns": [], "row_count": 0}
+        # Use to_dict() for TableProfile dataclass
+        profile_data = profile.to_dict() if hasattr(profile, 'to_dict') else (
+            profile.dict() if hasattr(profile, 'dict') else {"table_name": table_name, "columns": [], "row_count": 0}
+        )
         
         result = await ai_service.analyze_profile(profile_data)
         
