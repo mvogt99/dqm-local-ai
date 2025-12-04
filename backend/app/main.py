@@ -21,7 +21,8 @@ from app.routes import (
     database_router,
     audit_router,
     lineage_router,
-    reports_router
+    reports_router,
+    connections_router,  # V79: Database connection manager
 )
 # Legacy routes for backward compatibility
 from app.api_routes import router as api_router
@@ -152,6 +153,7 @@ app.include_router(database_router)  # V74: Dynamic database configuration
 app.include_router(audit_router)  # V76: Audit logging
 app.include_router(lineage_router)  # V77: Data lineage tracking
 app.include_router(reports_router)  # V77: Report generation
+app.include_router(connections_router)  # V79: Database connection manager
 
 # Include legacy API routes for backward compatibility
 app.include_router(api_router)
