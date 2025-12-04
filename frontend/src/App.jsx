@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './App.css';
+import { MultiTableSelector, DatabaseConnectionManager } from './components';
 
 const API_BASE = 'http://localhost:8001';
 
@@ -8,6 +9,7 @@ const App = () => {
   const [activeTab, setActiveTab] = useState('Tables');
   const [tables, setTables] = useState([]);
   const [selectedTable, setSelectedTable] = useState(null);
+  const [selectedTables, setSelectedTables] = useState([]);
   const [profileData, setProfileData] = useState(null);
   const [rules, setRules] = useState([]);
   const [customRules, setCustomRules] = useState([]);
@@ -15,6 +17,8 @@ const App = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showAddRule, setShowAddRule] = useState(false);
+  const [executionResults, setExecutionResults] = useState({});
+  const [executing, setExecuting] = useState(null);
   const [newRule, setNewRule] = useState({
     name: '',
     column: '',
@@ -37,6 +41,33 @@ const App = () => {
     } catch (err) {
       console.error('Error fetching tables:', err);
       setError('Failed to fetch tables: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Batch profile multiple tables
+  const batchProfileTables = async () => {
+    if (selectedTables.length === 0) {
+      setError('Please select at least one table');
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await axios.post(`${API_BASE}/data-profiling/profile/batch`, {
+        tables: selectedTables
+      });
+      const result = response.data;
+      alert(`Batch profiling complete!\nSuccessful: ${result.successful}\nFailed: ${result.failed}`);
+      // If only one table, show its profile
+      if (selectedTables.length === 1 && result.profiles[0]?.success) {
+        setSelectedTable(selectedTables[0]);
+        setProfileData(result.profiles[0].profile_data);
+      }
+    } catch (err) {
+      console.error('Error batch profiling:', err);
+      setError('Failed to batch profile: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoading(false);
     }
@@ -152,6 +183,54 @@ const App = () => {
 
   const getAllRules = () => [...rules, ...customRules];
 
+  // Execute a single rule
+  const executeRule = async (rule, index) => {
+    setExecuting(index);
+    try {
+      // For generated rules without IDs, we need to create them first
+      let ruleId = rule.id;
+      if (!ruleId) {
+        // Create the rule first
+        const createResponse = await axios.post(`${API_BASE}/data-quality/rules`, {
+          name: rule.name,
+          table: selectedTable,
+          column: rule.column,
+          rule_type: rule.rule_type,
+          definition: rule.definition || `SELECT * FROM ${selectedTable} WHERE ${rule.column} IS NULL`,
+          severity: rule.severity || 'warning'
+        });
+        ruleId = createResponse.data.id;
+      }
+
+      const response = await axios.post(`${API_BASE}/data-quality/rules/${ruleId}/execute`);
+      setExecutionResults(prev => ({
+        ...prev,
+        [index]: response.data
+      }));
+    } catch (err) {
+      console.error('Error executing rule:', err);
+      setExecutionResults(prev => ({
+        ...prev,
+        [index]: { error: err.response?.data?.detail || err.message }
+      }));
+    } finally {
+      setExecuting(null);
+    }
+  };
+
+  // Execute all rules
+  const executeAllRules = async () => {
+    const allRules = getAllRules();
+    setLoading(true);
+    setError(null);
+
+    for (let i = 0; i < allRules.length; i++) {
+      await executeRule(allRules[i], i);
+    }
+
+    setLoading(false);
+  };
+
   return (
     <div className="App">
       <header className="App-header">
@@ -162,6 +241,7 @@ const App = () => {
             <li onClick={() => handleTabChange('Profiling Results')} className={activeTab === 'Profiling Results' ? 'active' : ''}>Profiling Results</li>
             <li onClick={() => handleTabChange('Data Quality Rules')} className={activeTab === 'Data Quality Rules' ? 'active' : ''}>Data Quality Rules</li>
             <li onClick={() => handleTabChange('Root Cause Analysis')} className={activeTab === 'Root Cause Analysis' ? 'active' : ''}>Root Cause Analysis</li>
+            <li onClick={() => handleTabChange('Settings')} className={activeTab === 'Settings' ? 'active' : ''}>Settings</li>
           </ul>
         </nav>
       </header>
@@ -173,21 +253,39 @@ const App = () => {
         {activeTab === 'Tables' && (
           <div className="tables-section">
             <h2>Database Tables</h2>
-            <p>Select a table to profile:</p>
+            <p>Select tables to profile (click for single, use checkboxes for batch):</p>
             {tables.length === 0 && !loading ? (
               <p>No tables found. Check backend connection.</p>
             ) : (
-              <div className="table-grid">
-                {tables.map(table => (
-                  <div
-                    key={table}
-                    className={`table-card ${selectedTable === table ? 'selected' : ''}`}
-                    onClick={() => fetchProfile(table)}
+              <>
+                <MultiTableSelector
+                  tables={tables}
+                  selectedTables={selectedTables}
+                  onSelectionChange={setSelectedTables}
+                  disabled={loading}
+                />
+                <div className="table-actions" style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={batchProfileTables}
+                    disabled={selectedTables.length === 0 || loading}
+                    className="primary"
                   >
-                    {table}
-                  </div>
-                ))}
-              </div>
+                    Profile Selected ({selectedTables.length})
+                  </button>
+                </div>
+                <h3 style={{ marginTop: '20px' }}>Quick Select (Single Table)</h3>
+                <div className="table-grid">
+                  {tables.map(table => (
+                    <div
+                      key={table}
+                      className={`table-card ${selectedTable === table ? 'selected' : ''}`}
+                      onClick={() => fetchProfile(table)}
+                    >
+                      {table}
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
@@ -254,6 +352,7 @@ const App = () => {
                         <th>Type</th>
                         <th>Severity</th>
                         <th>Reason</th>
+                        <th>Result</th>
                         <th>Actions</th>
                       </tr>
                     </thead>
@@ -274,6 +373,24 @@ const App = () => {
                           </td>
                           <td>{rule.reason || '-'}</td>
                           <td>
+                            {executionResults[idx] ? (
+                              executionResults[idx].error ? (
+                                <span className="result-error">Error</span>
+                              ) : (
+                                <span className={`result-badge ${executionResults[idx].passed ? 'passed' : 'failed'}`}>
+                                  {executionResults[idx].passed ? 'PASS' : 'FAIL'} ({executionResults[idx].pass_rate?.toFixed(1)}%)
+                                </span>
+                              )
+                            ) : '-'}
+                          </td>
+                          <td>
+                            <button
+                              className="execute-btn"
+                              onClick={() => executeRule(rule, idx)}
+                              disabled={executing === idx}
+                            >
+                              {executing === idx ? 'Running...' : 'Execute'}
+                            </button>
                             {rule.is_custom && (
                               <button
                                 className="remove-btn"
@@ -362,6 +479,13 @@ const App = () => {
                   <button onClick={fetchRules} disabled={!selectedTable || loading}>
                     {loading ? 'Generating...' : rules.length > 0 ? 'Regenerate Rules' : 'Generate Rules'}
                   </button>
+                  <button
+                    onClick={executeAllRules}
+                    disabled={!selectedTable || loading || getAllRules().length === 0}
+                    className="primary"
+                  >
+                    {loading ? 'Executing...' : 'Execute All Rules'}
+                  </button>
                   <button onClick={() => setShowAddRule(!showAddRule)} className="secondary">
                     {showAddRule ? 'Cancel' : '+ Add Custom Rule'}
                   </button>
@@ -412,6 +536,13 @@ const App = () => {
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {activeTab === 'Settings' && (
+          <div className="settings-section">
+            <h2>Settings</h2>
+            <DatabaseConnectionManager apiBase={API_BASE} />
           </div>
         )}
       </main>
