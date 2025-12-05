@@ -502,33 +502,39 @@ const App = () => {
               <p>Select and profile a table first from the Tables tab.</p>
             ) : (
               <>
-                {analysis && (
+                {analysis && analysis.status === 'success' && analysis.analysis && (
                   <div className="analysis-results">
                     <div className="confidence">
-                      Confidence: {((analysis.confidence || 0) * 100).toFixed(0)}%
+                      Insights Found: {analysis.analysis.insight_count || analysis.analysis.insights?.length || 0}
                     </div>
-                    <h3>Analysis</h3>
-                    <p>{analysis.analysis || analysis.summary || 'Analysis completed.'}</p>
-                    {analysis.root_causes && analysis.root_causes.length > 0 && (
+                    <h3>Analysis for {analysis.analysis.table_name}</h3>
+                    <p>Analysis completed at {new Date(analysis.analysis.analysis_timestamp).toLocaleString()}</p>
+
+                    {analysis.analysis.insights && analysis.analysis.insights.length > 0 && (
                       <>
-                        <h3>Root Causes</h3>
-                        <ul>
-                          {analysis.root_causes.map((cause, idx) => (
-                            <li key={idx}>{cause}</li>
+                        <h3>Data Quality Insights</h3>
+                        <div className="insights-list">
+                          {analysis.analysis.insights.map((insight, idx) => (
+                            <div key={idx} className={`insight-card ${insight.severity}`}>
+                              <div className="insight-header">
+                                <span className={`severity-badge ${insight.severity}`}>{insight.severity}</span>
+                                <span className="category">{insight.category}</span>
+                              </div>
+                              <p className="description">{insight.description}</p>
+                              <p className="recommendation"><strong>Recommendation:</strong> {insight.recommendation}</p>
+                              {insight.affected_columns && (
+                                <p className="columns">Affected: {insight.affected_columns.join(', ')}</p>
+                              )}
+                            </div>
                           ))}
-                        </ul>
+                        </div>
                       </>
                     )}
-                    {analysis.recommendations && analysis.recommendations.length > 0 && (
-                      <>
-                        <h3>Recommendations</h3>
-                        <ul>
-                          {analysis.recommendations.map((rec, idx) => (
-                            <li key={idx}>{rec}</li>
-                          ))}
-                        </ul>
-                      </>
-                    )}
+                  </div>
+                )}
+                {analysis && analysis.status !== 'success' && (
+                  <div className="analysis-error">
+                    <p>Analysis failed: {analysis.error || 'Unknown error'}</p>
                   </div>
                 )}
                 <button onClick={runAnalysis} disabled={!selectedTable || loading}>
