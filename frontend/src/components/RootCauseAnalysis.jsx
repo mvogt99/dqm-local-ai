@@ -116,6 +116,8 @@ function RootCauseAnalysis({ apiBase }) {
             <thead>
               <tr>
                 <th>Rule</th>
+                <th>Table.Column</th>
+                <th>DAMA Dimension</th>
                 <th>Failed Count</th>
                 <th>Pass Rate</th>
                 <th>Actions</th>
@@ -125,6 +127,12 @@ function RootCauseAnalysis({ apiBase }) {
               {failedResults.map(r => (
                 <tr key={r.id}>
                   <td>{r.rule_name}</td>
+                  <td className="table-column">{r.table_name}.{r.column_name}</td>
+                  <td>
+                    <span className="dama-badge" title={r.dama_description || ''}>
+                      {r.dama_dimension || 'accuracy'}
+                    </span>
+                  </td>
                   <td className="failed">{r.failed_count}</td>
                   <td>{r.pass_rate}%</td>
                   <td>

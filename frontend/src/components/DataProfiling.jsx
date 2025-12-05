@@ -17,11 +17,15 @@ function DataProfiling({ apiBase }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  // V88: Load tables and ALL stored results on mount
   useEffect(() => {
     fetch(`${apiBase}/data-profiling/tables`)
       .then(res => res.json())
       .then(data => setTables(data))
       .catch(err => setError('Failed to load tables'));
+
+    // V88: Also load any existing stored profiling results on mount
+    loadAllStoredResults();
   }, [apiBase]);
 
   useEffect(() => {
@@ -209,10 +213,14 @@ function DataProfiling({ apiBase }) {
         </div>
       )}
 
-      {storedResults.length > 0 && (
-        <div className="stored-results">
-          <h3>Profiling Results ({storedResults.length} columns)</h3>
-          {storedResults.map((result, idx) => {
+      {/* V88: Profiling Results Section - Always visible with fallback message */}
+      <div className="stored-results">
+        <h3>Profiling Results {storedResults.length > 0 ? `(${storedResults.length} columns)` : ''}</h3>
+        {storedResults.length === 0 ? (
+          <p className="empty-state">
+            No profiling results available. Select tables above and click "Profile Selected" to generate profiling data.
+          </p>
+        ) : storedResults.map((result, idx) => {
             // V86: Handle both flat (Local AI) and nested (Expert AI) formats
             const nullPercent = result.result?.nulls?.null_percentage ?? result.null_percent ?? 0;
             const uniqueCount = result.result?.uniqueness?.unique_values ?? result.unique_count ?? 0;
@@ -250,8 +258,7 @@ function DataProfiling({ apiBase }) {
               </div>
             );
           })}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

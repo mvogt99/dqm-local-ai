@@ -534,6 +534,102 @@ class DataQualityRulesService:
                         'dama_description': DAMA_DIMENSIONS['validity']
                     })
 
+            # V88: Rule 6: Integrity Check - For foreign key columns (DAMA: Integrity)
+            if column.lower().endswith('_id') and column.lower() not in ['id', f'{table}_id']:
+                # Infer referenced table from column name (e.g., customer_id -> customers)
+                ref_table = column.lower().replace('_id', '')
+                if ref_table + 's' in ALLOWED_TABLES or ref_table in ALLOWED_TABLES:
+                    ref_table_name = ref_table + 's' if ref_table + 's' in ALLOWED_TABLES else ref_table
+                    suggested_rules.append({
+                        'name': f"referential_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'referential_check',
+                        'definition': f"SELECT t.* FROM {table} t LEFT JOIN {ref_table_name} r ON t.{column} = r.{ref_table}_id WHERE t.{column} IS NOT NULL AND r.{ref_table}_id IS NULL",
+                        'severity': 'critical',
+                        'reason': f"Foreign key references to {ref_table_name} should be valid",
+                        'reference_table': ref_table_name,
+                        'confidence': 0.8,
+                        'dama_dimension': 'integrity',
+                        'dama_description': DAMA_DIMENSIONS['integrity']
+                    })
+
+            # V88: Rule 7: Timeliness Check - For date/timestamp columns (DAMA: Timeliness)
+            if data_type in ['date', 'timestamp', 'timestamp without time zone', 'timestamp with time zone']:
+                if any(kw in column.lower() for kw in ['created', 'updated', 'modified', 'order_date', 'shipped_date']):
+                    suggested_rules.append({
+                        'name': f"freshness_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'freshness_check',
+                        'definition': f"SELECT * FROM {table} WHERE {column} < CURRENT_DATE - INTERVAL '365 days'",
+                        'severity': 'info',
+                        'reason': f"Date column should contain recent data (within 1 year)",
+                        'confidence': 0.6,
+                        'dama_dimension': 'timeliness',
+                        'dama_description': DAMA_DIMENSIONS['timeliness']
+                    })
+                # Future date check
+                suggested_rules.append({
+                    'name': f"future_date_check_{table}_{column}",
+                    'table': table,
+                    'column': column,
+                    'rule_type': 'range_check',
+                    'definition': f"SELECT * FROM {table} WHERE {column} > CURRENT_DATE + INTERVAL '1 day'",
+                    'severity': 'warning',
+                    'reason': f"Date column should not have future dates",
+                    'confidence': 0.8,
+                    'dama_dimension': 'timeliness',
+                    'dama_description': DAMA_DIMENSIONS['timeliness']
+                })
+
+            # V88: Rule 8: Precision Check - For numeric columns (DAMA: Precision)
+            if data_type in ['numeric', 'decimal', 'real', 'double precision', 'money']:
+                if any(kw in column.lower() for kw in ['price', 'amount', 'cost', 'rate']):
+                    suggested_rules.append({
+                        'name': f"precision_check_{table}_{column}",
+                        'table': table,
+                        'column': column,
+                        'rule_type': 'custom_sql',
+                        'definition': f"SELECT * FROM {table} WHERE {column} IS NOT NULL AND {column}::text ~ '\\.[0-9]{{3,}}'",
+                        'severity': 'info',
+                        'reason': f"Currency values should have 2 decimal places for precision",
+                        'confidence': 0.6,
+                        'dama_dimension': 'precision',
+                        'dama_description': DAMA_DIMENSIONS['precision']
+                    })
+
+            # V88: Rule 9: Relevance Check - For categorical columns (DAMA: Relevance)
+            if data_type in ['varchar', 'text', 'character varying'] and column.lower() in ['country', 'region', 'status', 'category', 'type']:
+                suggested_rules.append({
+                    'name': f"relevance_check_{table}_{column}",
+                    'table': table,
+                    'column': column,
+                    'rule_type': 'custom_sql',
+                    'definition': f"SELECT {column}, COUNT(*) as cnt FROM {table} WHERE {column} IS NOT NULL GROUP BY {column} HAVING COUNT(*) = 1",
+                    'severity': 'info',
+                    'reason': f"Categorical column may have rare/irrelevant values appearing only once",
+                    'confidence': 0.5,
+                    'dama_dimension': 'relevance',
+                    'dama_description': DAMA_DIMENSIONS['relevance']
+                })
+
+            # V88: Rule 10: Consistency Check - Cross-column validation (DAMA: Consistency)
+            # Check for date consistency (shipped_date should be after order_date)
+            if column.lower() == 'shipped_date':
+                suggested_rules.append({
+                    'name': f"consistency_check_{table}_dates",
+                    'table': table,
+                    'column': column,
+                    'rule_type': 'consistency_check',
+                    'definition': f"SELECT * FROM {table} WHERE shipped_date IS NOT NULL AND order_date IS NOT NULL AND shipped_date < order_date",
+                    'severity': 'critical',
+                    'reason': f"Shipped date should be after order date",
+                    'confidence': 0.95,
+                    'dama_dimension': 'consistency',
+                    'dama_description': DAMA_DIMENSIONS['consistency']
+                })
+
         return suggested_rules
 
     # =========================================================================
@@ -753,6 +849,7 @@ class DataQualityRulesService:
         """Get execution results, optionally filtered by rule.
 
         V86: Updated to use correct column name (rule_name instead of name).
+        V88: Enhanced to include table_name, column_name, rule_type, and DAMA dimension.
         """
         conn = await asyncpg.connect(self.dsn)
         try:
@@ -761,7 +858,8 @@ class DataQualityRulesService:
             if rule_id:
                 results = await conn.fetch('''
                     SELECT r.id, r.rule_id, dq.rule_name, r.passed,
-                           r.total_count, r.failed_count, r.failure_samples, r.executed_at
+                           r.total_count, r.failed_count, r.failure_samples, r.executed_at,
+                           dq.table_name, dq.column_name, dq.rule_type
                     FROM data_quality_results r
                     JOIN data_quality_rules dq ON r.rule_id = dq.id
                     WHERE r.rule_id = $1
@@ -771,7 +869,8 @@ class DataQualityRulesService:
             else:
                 results = await conn.fetch('''
                     SELECT r.id, r.rule_id, dq.rule_name, r.passed,
-                           r.total_count, r.failed_count, r.failure_samples, r.executed_at
+                           r.total_count, r.failed_count, r.failure_samples, r.executed_at,
+                           dq.table_name, dq.column_name, dq.rule_type
                     FROM data_quality_results r
                     JOIN data_quality_rules dq ON r.rule_id = dq.id
                     ORDER BY r.executed_at DESC
@@ -790,7 +889,13 @@ class DataQualityRulesService:
                         (r['total_count'] - r['failed_count']) / r['total_count'] * 100, 2
                     ) if r['total_count'] > 0 else 100.0,
                     'failure_samples': r['failure_samples'],
-                    'executed_at': r['executed_at'].isoformat() if r['executed_at'] else None
+                    'executed_at': r['executed_at'].isoformat() if r['executed_at'] else None,
+                    # V88: Add table, column, and DAMA dimension info
+                    'table_name': r['table_name'],
+                    'column_name': r['column_name'],
+                    'rule_type': r['rule_type'],
+                    'dama_dimension': RULE_TYPE_TO_DAMA.get(r['rule_type'], 'accuracy'),
+                    'dama_description': DAMA_DIMENSIONS.get(RULE_TYPE_TO_DAMA.get(r['rule_type'], 'accuracy'), '')
                 }
                 for r in results
             ]

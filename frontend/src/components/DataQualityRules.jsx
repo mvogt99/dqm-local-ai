@@ -285,9 +285,10 @@ function DataQualityRules({ apiBase }) {
             <thead>
               <tr>
                 <th>Rule</th>
+                <th>Table.Column</th>
+                <th>DAMA Dimension</th>
                 <th>Status</th>
                 <th>Pass Rate</th>
-                <th>Failed</th>
                 <th>Executed</th>
               </tr>
             </thead>
@@ -295,9 +296,14 @@ function DataQualityRules({ apiBase }) {
               {results.slice(0, 10).map(r => (
                 <tr key={r.id} className={r.passed ? 'passed' : 'failed'}>
                   <td>{r.rule_name}</td>
+                  <td className="table-column">{r.table_name}.{r.column_name}</td>
+                  <td>
+                    <span className="dama-badge" title={r.dama_description || ''}>
+                      {r.dama_dimension || 'accuracy'}
+                    </span>
+                  </td>
                   <td>{r.passed ? 'PASS' : 'FAIL'}</td>
                   <td>{r.pass_rate}%</td>
-                  <td>{r.failed_count}</td>
                   <td>{new Date(r.executed_at).toLocaleString()}</td>
                 </tr>
               ))}
