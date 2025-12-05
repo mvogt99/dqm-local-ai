@@ -189,10 +189,18 @@ class DataQualityRulesService:
 
         V86: rule_definition is stored as JSONB with structure like:
         {"sql": "SELECT ...", "threshold": 5} or just a string
+        V90: Fixed to handle JSON strings that need parsing
         """
         if rule_definition is None:
             return ""
         if isinstance(rule_definition, str):
+            # V90: Try to parse JSON strings that contain SQL definitions
+            try:
+                parsed = json.loads(rule_definition)
+                if isinstance(parsed, dict):
+                    return parsed.get('sql') or parsed.get('query') or parsed.get('definition') or str(parsed)
+            except (json.JSONDecodeError, TypeError):
+                pass
             return rule_definition
         if isinstance(rule_definition, dict):
             # Try common keys for SQL definition
