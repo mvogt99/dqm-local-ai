@@ -78,11 +78,31 @@ async def profile_table(table: str):
 @router.post("/profile/{table}/run")
 async def run_profile(table: str):
     """
-    Run profiling on a table and return results.
+    Run profiling on a table and STORE results.
 
+    V85: Fixed to store profiling results for DQ rule suggestions.
     This endpoint matches the Expert AI pattern for compatibility.
+    Results are stored in the database for later use by rule suggestions.
     """
-    return await profile_table(table)
+    if table not in settings.TABLE_WHITELIST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Table '{table}' is not in the whitelist. Allowed: {sorted(settings.TABLE_WHITELIST)}"
+        )
+
+    try:
+        service = await get_profiling_service()
+        profile = await service.profile_and_store(table)
+        return {
+            "table": table,
+            "columns_profiled": len(profile.columns),
+            "stored": True,
+            "row_count": profile.row_count
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to profile table: {str(e)}")
 
 
 @router.post("/profile/{table}/store")

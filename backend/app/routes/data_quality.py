@@ -450,11 +450,12 @@ async def get_results(
     """
     Get rule execution results.
 
+    V85: Fixed to return array directly for frontend compatibility.
     Returns historical execution results, optionally filtered by rule ID.
     """
     try:
         service = get_service()
         results = await service.get_execution_results(rule_id=rule_id, limit=limit)
-        return {"results": results}
+        return results  # Return array directly for frontend compatibility
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get results: {str(e)}")
