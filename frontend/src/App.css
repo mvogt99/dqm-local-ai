@@ -539,6 +539,30 @@ button.primary:hover {
   color: #4a90d9;
 }
 
+/* V87: DAMA DQ Dimension Badges */
+.dama-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  background-color: #2a3a4a;
+  color: #7ac0ff;
+  border: 1px solid #3a5a7a;
+  cursor: help;
+}
+
+.dama-badge[title]:hover {
+  background-color: #3a4a5a;
+  color: #9ad0ff;
+}
+
+/* DAMA dimension color variations */
+.suggestion-header .dama-badge {
+  margin-left: 8px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   nav ul {

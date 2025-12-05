@@ -25,6 +25,33 @@ ALLOWED_TABLES = {
     'employees', 'shippers', 'orders', 'order_details'
 }
 
+# V87: DAMA Data Quality Dimensions
+# Standard dimensions for categorizing data quality rules
+DAMA_DIMENSIONS = {
+    'accuracy': 'Data values accurately reflect real-world entities',
+    'completeness': 'All required data values are present',
+    'consistency': 'Data values are consistent across systems',
+    'timeliness': 'Data is available when needed and up-to-date',
+    'uniqueness': 'Duplicate records are minimized or eliminated',
+    'validity': 'Data values conform to defined rules and constraints',
+    'integrity': 'Relationships between data elements are correct',
+    'precision': 'Data is at the right level of detail',
+    'relevance': 'Data is appropriate for its intended use'
+}
+
+# Mapping of rule types to DAMA dimensions
+RULE_TYPE_TO_DAMA = {
+    'null_check': 'completeness',
+    'not_null': 'completeness',
+    'unique_check': 'uniqueness',
+    'range_check': 'validity',
+    'pattern_check': 'validity',
+    'custom_sql': 'accuracy',
+    'referential_check': 'integrity',
+    'consistency_check': 'consistency',
+    'freshness_check': 'timeliness'
+}
+
 
 @dataclass
 class RuleResult:
@@ -144,7 +171,10 @@ class DataQualityRulesService:
                     'definition': self._extract_definition(r['rule_definition']),
                     'severity': r['severity'],
                     'is_active': r['is_active'],
-                    'created_at': r['created_at'].isoformat() if r['created_at'] else None
+                    'created_at': r['created_at'].isoformat() if r['created_at'] else None,
+                    # V87: Add DAMA dimension based on rule type
+                    'dama_dimension': RULE_TYPE_TO_DAMA.get(r['rule_type'], 'accuracy'),
+                    'dama_description': DAMA_DIMENSIONS.get(RULE_TYPE_TO_DAMA.get(r['rule_type'], 'accuracy'), '')
                 }
                 for r in rules
             ]
@@ -370,7 +400,7 @@ class DataQualityRulesService:
             min_value = result.get('min_value')
             max_value = result.get('max_value')
 
-            # Rule 1: NULL Check - For columns with nulls
+            # Rule 1: NULL Check - For columns with nulls (DAMA: Completeness)
             if null_pct > 0.01:  # More than 1% nulls
                 severity = 'critical' if null_pct > 0.1 else 'warning' if null_pct > 0.05 else 'info'
                 suggested_rules.append({
@@ -382,10 +412,13 @@ class DataQualityRulesService:
                     'severity': severity,
                     'reason': f"Column has {null_pct*100:.1f}% null values",
                     'threshold': 0 if null_pct < 0.05 else 5,
-                    'confidence': round(1.0 - null_pct, 2)
+                    'confidence': round(1.0 - null_pct, 2),
+                    # V87: DAMA DQ Dimension
+                    'dama_dimension': 'completeness',
+                    'dama_description': DAMA_DIMENSIONS['completeness']
                 })
 
-            # Rule 2: NOT NULL Check - For columns that SHOULD be null-free
+            # Rule 2: NOT NULL Check - For columns that SHOULD be null-free (DAMA: Completeness)
             if null_pct == 0 and column.lower() in ['id', 'name', 'email', 'customer_id', 'order_id', 'product_id']:
                 suggested_rules.append({
                     'name': f"not_null_{table}_{column}",
@@ -395,10 +428,13 @@ class DataQualityRulesService:
                     'definition': f"SELECT * FROM {table} WHERE {column} IS NULL",
                     'severity': 'critical',
                     'reason': f"Critical column should never be null",
-                    'confidence': 1.0
+                    'confidence': 1.0,
+                    # V87: DAMA DQ Dimension
+                    'dama_dimension': 'completeness',
+                    'dama_description': DAMA_DIMENSIONS['completeness']
                 })
 
-            # Rule 3: Unique Check - For columns that appear to be unique
+            # Rule 3: Unique Check - For columns that appear to be unique (DAMA: Uniqueness)
             if unique_count > 0 and column.lower().endswith(('_id', 'id', 'email', 'phone', 'code')):
                 suggested_rules.append({
                     'name': f"unique_check_{table}_{column}",
@@ -408,10 +444,13 @@ class DataQualityRulesService:
                     'definition': f"SELECT {column}, COUNT(*) FROM {table} GROUP BY {column} HAVING COUNT(*) > 1",
                     'severity': 'warning',
                     'reason': f"Column appears to be a unique identifier",
-                    'confidence': 0.85
+                    'confidence': 0.85,
+                    # V87: DAMA DQ Dimension
+                    'dama_dimension': 'uniqueness',
+                    'dama_description': DAMA_DIMENSIONS['uniqueness']
                 })
 
-            # Rule 4: Range Check - For numeric columns
+            # Rule 4: Range Check - For numeric columns (DAMA: Validity)
             if data_type in ['integer', 'numeric', 'decimal', 'float', 'double', 'int', 'bigint', 'smallint', 'real']:
                 if column.lower() in ['price', 'unit_price', 'amount', 'total', 'cost', 'quantity', 'units_in_stock', 'units_on_order', 'reorder_level']:
                     suggested_rules.append({
@@ -423,10 +462,13 @@ class DataQualityRulesService:
                         'severity': 'critical',
                         'reason': f"Numeric column should have non-negative values",
                         'min_value': 0,
-                        'confidence': 0.9
+                        'confidence': 0.9,
+                        # V87: DAMA DQ Dimension
+                        'dama_dimension': 'validity',
+                        'dama_description': DAMA_DIMENSIONS['validity']
                     })
 
-                # Add range boundary check if min/max available
+                # Add range boundary check if min/max available (DAMA: Accuracy)
                 if min_value is not None and max_value is not None:
                     suggested_rules.append({
                         'name': f"boundary_check_{table}_{column}",
@@ -438,10 +480,13 @@ class DataQualityRulesService:
                         'reason': f"Values outside observed range [{min_value}, {max_value}]",
                         'min_value': min_value,
                         'max_value': max_value,
-                        'confidence': 0.7
+                        'confidence': 0.7,
+                        # V87: DAMA DQ Dimension
+                        'dama_dimension': 'accuracy',
+                        'dama_description': DAMA_DIMENSIONS['accuracy']
                     })
 
-            # Rule 5: Pattern Check - For string columns with expected formats
+            # Rule 5: Pattern Check - For string columns with expected formats (DAMA: Validity)
             if data_type in ['varchar', 'text', 'character varying', 'char']:
                 if 'email' in column.lower():
                     suggested_rules.append({
@@ -453,7 +498,10 @@ class DataQualityRulesService:
                         'severity': 'warning',
                         'reason': f"Email column should match email format",
                         'pattern': '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$',
-                        'confidence': 0.85
+                        'confidence': 0.85,
+                        # V87: DAMA DQ Dimension
+                        'dama_dimension': 'validity',
+                        'dama_description': DAMA_DIMENSIONS['validity']
                     })
                 elif 'phone' in column.lower() or 'fax' in column.lower():
                     suggested_rules.append({
@@ -465,7 +513,10 @@ class DataQualityRulesService:
                         'severity': 'info',
                         'reason': f"Phone column should contain valid phone characters",
                         'pattern': '^[0-9()\\-+ .]+$',
-                        'confidence': 0.75
+                        'confidence': 0.75,
+                        # V87: DAMA DQ Dimension
+                        'dama_dimension': 'validity',
+                        'dama_description': DAMA_DIMENSIONS['validity']
                     })
                 elif 'postal' in column.lower() or 'zip' in column.lower():
                     suggested_rules.append({
@@ -477,7 +528,10 @@ class DataQualityRulesService:
                         'severity': 'info',
                         'reason': f"Postal code should match expected format",
                         'pattern': '^[A-Za-z0-9 -]+$',
-                        'confidence': 0.7
+                        'confidence': 0.7,
+                        # V87: DAMA DQ Dimension
+                        'dama_dimension': 'validity',
+                        'dama_description': DAMA_DIMENSIONS['validity']
                     })
 
         return suggested_rules

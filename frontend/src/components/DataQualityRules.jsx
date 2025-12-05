@@ -204,6 +204,12 @@ function DataQualityRules({ apiBase }) {
                 <span className={`severity ${s.severity}`}>{s.severity}</span>
                 <strong>{s.table}.{s.column}</strong>
                 <span className="rule-type">{s.rule_type}</span>
+                {/* V87: DAMA DQ Dimension badge */}
+                {s.dama_dimension && (
+                  <span className="dama-badge" title={s.dama_description || ''}>
+                    {s.dama_dimension}
+                  </span>
+                )}
               </div>
               <p className="suggestion-reason">{s.reason}</p>
               <div className="suggestion-actions">
@@ -238,6 +244,7 @@ function DataQualityRules({ apiBase }) {
               <th>Table</th>
               <th>Column</th>
               <th>Type</th>
+              <th>DAMA Dimension</th>
               <th>Severity</th>
               <th>Actions</th>
             </tr>
@@ -249,6 +256,12 @@ function DataQualityRules({ apiBase }) {
                 <td>{rule.table}</td>
                 <td>{rule.column}</td>
                 <td>{rule.rule_type}</td>
+                <td>
+                  {/* V87: DAMA DQ Dimension */}
+                  <span className="dama-badge" title={rule.dama_description || ''}>
+                    {rule.dama_dimension || 'accuracy'}
+                  </span>
+                </td>
                 <td><span className={`severity ${rule.severity}`}>{rule.severity}</span></td>
                 <td>
                   <button
