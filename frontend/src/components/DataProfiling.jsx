@@ -80,11 +80,9 @@ function DataProfiling({ apiBase }) {
 
       setBatchResults(results);
 
-      // If single table selected, show its details
-      if (selectedTables.length === 1) {
-        setSelectedTable(selectedTables[0]);
-        loadStoredResults();
-      }
+      // V86: Load ALL stored results for profiled tables (not just single table)
+      // This fixes the "Select a table" message after multi-table profiling
+      await loadAllStoredResults();
     } catch (err) {
       setError('Batch profiling failed: ' + err.message);
     } finally {
@@ -94,11 +92,26 @@ function DataProfiling({ apiBase }) {
 
   const loadStoredResults = async () => {
     try {
-      const res = await fetch(`${apiBase}/data-profiling/results?table=${selectedTable}`);
+      const res = await fetch(`${apiBase}/data-profiling/results?table_name=${selectedTable}`);
       const data = await res.json();
-      setStoredResults(data);
+      // V86: Handle both array and object responses
+      const results = Array.isArray(data) ? data : (data.results || []);
+      setStoredResults(results);
     } catch (err) {
       console.error('Failed to load results:', err);
+    }
+  };
+
+  // V86: Load ALL stored results without table filter (for multi-table profiling)
+  const loadAllStoredResults = async () => {
+    try {
+      const res = await fetch(`${apiBase}/data-profiling/results`);
+      const data = await res.json();
+      // Handle both array and object responses
+      const results = Array.isArray(data) ? data : (data.results || []);
+      setStoredResults(results);
+    } catch (err) {
+      console.error('Failed to load all results:', err);
     }
   };
 
@@ -198,38 +211,45 @@ function DataProfiling({ apiBase }) {
 
       {storedResults.length > 0 && (
         <div className="stored-results">
-          <h3>Profiling Results</h3>
-          {storedResults.map(result => (
-            <div key={result.id} className="result-card">
-              <h4>{result.column_name}</h4>
-              <div className="metrics">
-                {result.result.nulls && (
+          <h3>Profiling Results ({storedResults.length} columns)</h3>
+          {storedResults.map((result, idx) => {
+            // V86: Handle both flat (Local AI) and nested (Expert AI) formats
+            const nullPercent = result.result?.nulls?.null_percentage ?? result.null_percent ?? 0;
+            const uniqueCount = result.result?.uniqueness?.unique_values ?? result.unique_count ?? 0;
+            const totalRows = result.result?.uniqueness?.total_rows ?? null;
+            const minVal = result.result?.statistics?.min ?? result.min_value;
+            const maxVal = result.result?.statistics?.max ?? result.max_value;
+            const columnName = result.column_name;
+            const tableName = result.table_name;
+
+            return (
+              <div key={result.id || idx} className="result-card">
+                <h4>{tableName ? `${tableName}.` : ''}{columnName}</h4>
+                <div className="metrics">
                   <div className="metric">
                     <span className="label">Nulls:</span>
-                    <span className={`value ${result.result.nulls.null_percentage > 0 ? 'warning' : 'success'}`}>
-                      {result.result.nulls.null_percentage}%
+                    <span className={`value ${nullPercent > 0 ? 'warning' : 'success'}`}>
+                      {nullPercent?.toFixed(1)}%
                     </span>
                   </div>
-                )}
-                {result.result.uniqueness && (
                   <div className="metric">
                     <span className="label">Unique:</span>
-                    <span className={`value ${result.result.uniqueness.is_unique ? 'success' : 'info'}`}>
-                      {result.result.uniqueness.unique_values} / {result.result.uniqueness.total_rows}
+                    <span className="value info">
+                      {uniqueCount}{totalRows ? ` / ${totalRows}` : ''}
                     </span>
                   </div>
-                )}
-                {result.result.statistics?.min !== undefined && (
-                  <div className="metric">
-                    <span className="label">Range:</span>
-                    <span className="value">
-                      {result.result.statistics.min} - {result.result.statistics.max}
-                    </span>
-                  </div>
-                )}
+                  {(minVal !== undefined && minVal !== null) && (
+                    <div className="metric">
+                      <span className="label">Range:</span>
+                      <span className="value">
+                        {minVal} - {maxVal}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

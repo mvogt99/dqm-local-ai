@@ -159,16 +159,15 @@ async def get_stored_results(table_name: str = None, limit: int = 50):
     """
     Get stored profiling results.
 
+    V86: Returns array directly for frontend compatibility (like Expert AI).
     Returns previously stored profiling results, optionally filtered by table.
     """
     try:
         service = await get_profiling_service()
         results = await service.get_stored_results(table_name=table_name, limit=limit)
-        return {
-            "results": results,
-            "count": len(results),
-            "table_filter": table_name
-        }
+        # V86: Return array directly for frontend compatibility
+        # Frontend expects array for .length checks and .map() iterations
+        return results
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

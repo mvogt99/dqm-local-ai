@@ -71,15 +71,20 @@ class DataQualityRulesService:
         return table.lower()
 
     async def _ensure_tables_exist(self, conn: asyncpg.Connection) -> None:
-        """Ensure required tables exist in the database."""
+        """Ensure required tables exist in the database.
+
+        V86: Updated to match existing database schema:
+        - rule_name instead of name
+        - rule_definition (JSONB) instead of definition (TEXT)
+        """
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS data_quality_rules (
                 id SERIAL PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
+                rule_name VARCHAR(255) NOT NULL,
                 table_name VARCHAR(255) NOT NULL,
-                column_name VARCHAR(255) NOT NULL,
+                column_name VARCHAR(255),
                 rule_type VARCHAR(50) NOT NULL,
-                definition TEXT NOT NULL,
+                rule_definition JSONB NOT NULL,
                 severity VARCHAR(20) DEFAULT 'warning',
                 is_active BOOLEAN DEFAULT true,
                 description TEXT,
@@ -104,23 +109,26 @@ class DataQualityRulesService:
     # =========================================================================
 
     async def get_all_rules(self, active_only: bool = True) -> List[Dict]:
-        """Get all data quality rules, optionally filtered by active status."""
+        """Get all data quality rules, optionally filtered by active status.
+
+        V86: Updated to use correct column names (rule_name, rule_definition as JSONB).
+        """
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
 
             if active_only:
                 query = '''
-                    SELECT id, name, table_name as table, column_name as column,
-                           rule_type, definition, severity, is_active, created_at
+                    SELECT id, rule_name, table_name, column_name,
+                           rule_type, rule_definition, severity, is_active, created_at
                     FROM data_quality_rules
                     WHERE is_active = true
                     ORDER BY created_at DESC
                 '''
             else:
                 query = '''
-                    SELECT id, name, table_name as table, column_name as column,
-                           rule_type, definition, severity, is_active, created_at
+                    SELECT id, rule_name, table_name, column_name,
+                           rule_type, rule_definition, severity, is_active, created_at
                     FROM data_quality_rules
                     ORDER BY created_at DESC
                 '''
@@ -129,11 +137,11 @@ class DataQualityRulesService:
             return [
                 {
                     'id': r['id'],
-                    'name': r['name'],
-                    'table': r['table'],
-                    'column': r['column'],
+                    'name': r['rule_name'],
+                    'table': r['table_name'],
+                    'column': r['column_name'],
                     'rule_type': r['rule_type'],
-                    'definition': r['definition'],
+                    'definition': self._extract_definition(r['rule_definition']),
                     'severity': r['severity'],
                     'is_active': r['is_active'],
                     'created_at': r['created_at'].isoformat() if r['created_at'] else None
@@ -146,14 +154,32 @@ class DataQualityRulesService:
         finally:
             await conn.close()
 
+    def _extract_definition(self, rule_definition) -> str:
+        """Extract SQL definition from JSONB rule_definition.
+
+        V86: rule_definition is stored as JSONB with structure like:
+        {"sql": "SELECT ...", "threshold": 5} or just a string
+        """
+        if rule_definition is None:
+            return ""
+        if isinstance(rule_definition, str):
+            return rule_definition
+        if isinstance(rule_definition, dict):
+            # Try common keys for SQL definition
+            return rule_definition.get('sql') or rule_definition.get('query') or rule_definition.get('definition') or str(rule_definition)
+        return str(rule_definition)
+
     async def get_rule_by_id(self, rule_id: int) -> Optional[Dict]:
-        """Get a specific rule by ID."""
+        """Get a specific rule by ID.
+
+        V86: Updated to use correct column names (rule_name, rule_definition).
+        """
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
             rule = await conn.fetchrow('''
-                SELECT id, name, table_name as table, column_name as column,
-                       rule_type, definition, severity, is_active, description, threshold, created_at
+                SELECT id, rule_name, table_name, column_name,
+                       rule_type, rule_definition, severity, is_active, created_at
                 FROM data_quality_rules
                 WHERE id = $1
             ''', rule_id)
@@ -163,15 +189,15 @@ class DataQualityRulesService:
 
             return {
                 'id': rule['id'],
-                'name': rule['name'],
-                'table': rule['table'],
-                'column': rule['column'],
+                'name': rule['rule_name'],
+                'table': rule['table_name'],
+                'column': rule['column_name'],
                 'rule_type': rule['rule_type'],
-                'definition': rule['definition'],
+                'definition': self._extract_definition(rule['rule_definition']),
                 'severity': rule['severity'],
                 'is_active': rule['is_active'],
-                'description': rule['description'],
-                'threshold': rule['threshold'],
+                'description': rule['rule_definition'].get('description') if isinstance(rule['rule_definition'], dict) else None,
+                'threshold': rule['rule_definition'].get('threshold') if isinstance(rule['rule_definition'], dict) else None,
                 'created_at': rule['created_at'].isoformat() if rule['created_at'] else None
             }
         finally:
@@ -190,19 +216,24 @@ class DataQualityRulesService:
         definition: str,
         severity: str = 'warning'
     ) -> int:
-        """Create a new data quality rule."""
+        """Create a new data quality rule.
+
+        V86: Updated to use correct column names (rule_name, rule_definition as JSONB).
+        """
         # Validate table name
         self._validate_table(table)
 
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
+            # Store definition as JSONB
+            rule_definition = json.dumps({'sql': definition, 'type': rule_type})
             result = await conn.fetchval('''
                 INSERT INTO data_quality_rules
-                (name, table_name, column_name, rule_type, definition, severity)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                (rule_name, table_name, column_name, rule_type, rule_definition, severity)
+                VALUES ($1, $2, $3, $4, $5::jsonb, $6)
                 RETURNING id
-            ''', name, table, column, rule_type, definition, severity)
+            ''', name, table, column, rule_type, rule_definition, severity)
             return result
         finally:
             await conn.close()
@@ -217,19 +248,29 @@ class DataQualityRulesService:
         severity: str = 'warning',
         threshold: Optional[float] = None
     ) -> int:
-        """Create a custom SQL-based rule."""
+        """Create a custom SQL-based rule.
+
+        V86: Updated to use correct column names (rule_name, rule_definition as JSONB).
+        """
         # Validate table name
         self._validate_table(table)
 
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
+            # Store definition as JSONB with additional metadata
+            rule_definition = json.dumps({
+                'sql': custom_sql,
+                'type': 'custom_sql',
+                'description': description,
+                'threshold': threshold
+            })
             result = await conn.fetchval('''
                 INSERT INTO data_quality_rules
-                (name, table_name, column_name, rule_type, definition, severity, description, threshold)
-                VALUES ($1, $2, $3, 'custom_sql', $4, $5, $6, $7)
+                (rule_name, table_name, column_name, rule_type, rule_definition, severity)
+                VALUES ($1, $2, $3, 'custom_sql', $4::jsonb, $5)
                 RETURNING id
-            ''', name, table, column, custom_sql, severity, description, threshold)
+            ''', name, table, column, rule_definition, severity)
             return result
         finally:
             await conn.close()
@@ -239,7 +280,10 @@ class DataQualityRulesService:
     # =========================================================================
 
     async def update_rule(self, rule_id: int, **kwargs) -> None:
-        """Update a rule with the provided fields."""
+        """Update a rule with the provided fields.
+
+        V86: Updated to use correct column names (rule_name, rule_definition as JSONB).
+        """
         if not kwargs:
             return
 
@@ -250,19 +294,22 @@ class DataQualityRulesService:
             values = []
             param_num = 1
 
+            # V86: Map API field names to database column names
             field_mapping = {
-                'name': 'name',
-                'definition': 'definition',
+                'name': 'rule_name',
                 'severity': 'severity',
-                'is_active': 'is_active',
-                'description': 'description',
-                'threshold': 'threshold'
+                'is_active': 'is_active'
             }
 
             for key, value in kwargs.items():
                 if key in field_mapping:
                     set_clauses.append(f"{field_mapping[key]} = ${param_num}")
                     values.append(value)
+                    param_num += 1
+                elif key == 'definition':
+                    # Definition needs to be stored as JSONB
+                    set_clauses.append(f"rule_definition = ${param_num}::jsonb")
+                    values.append(json.dumps({'sql': value}))
                     param_num += 1
 
             if not set_clauses:
@@ -440,7 +487,10 @@ class DataQualityRulesService:
     # =========================================================================
 
     async def execute_rule(self, rule_id: int) -> Dict[str, Any]:
-        """Execute a data quality rule and return detailed results."""
+        """Execute a data quality rule and return detailed results.
+
+        V86: Updated to use correct column names (rule_name, rule_definition).
+        """
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
@@ -456,8 +506,13 @@ class DataQualityRulesService:
             table = rule['table_name']
             column = rule['column_name']
             rule_type = rule['rule_type']
-            definition = rule['definition']
-            threshold = rule['threshold'] or 0
+            # V86: Extract definition from JSONB rule_definition
+            rule_definition = rule['rule_definition']
+            definition = self._extract_definition(rule_definition)
+            # Extract threshold from JSONB or use default
+            threshold = 0
+            if isinstance(rule_definition, dict):
+                threshold = rule_definition.get('threshold', 0) or 0
 
             # Execute based on rule type
             if rule_type == 'custom_sql':
@@ -641,14 +696,17 @@ class DataQualityRulesService:
     async def get_execution_results(
         self, rule_id: Optional[int] = None, limit: int = 100
     ) -> List[Dict]:
-        """Get execution results, optionally filtered by rule."""
+        """Get execution results, optionally filtered by rule.
+
+        V86: Updated to use correct column name (rule_name instead of name).
+        """
         conn = await asyncpg.connect(self.dsn)
         try:
             await self._ensure_tables_exist(conn)
 
             if rule_id:
                 results = await conn.fetch('''
-                    SELECT r.id, r.rule_id, dq.name as rule_name, r.passed,
+                    SELECT r.id, r.rule_id, dq.rule_name, r.passed,
                            r.total_count, r.failed_count, r.failure_samples, r.executed_at
                     FROM data_quality_results r
                     JOIN data_quality_rules dq ON r.rule_id = dq.id
@@ -658,7 +716,7 @@ class DataQualityRulesService:
                 ''', rule_id, limit)
             else:
                 results = await conn.fetch('''
-                    SELECT r.id, r.rule_id, dq.name as rule_name, r.passed,
+                    SELECT r.id, r.rule_id, dq.rule_name, r.passed,
                            r.total_count, r.failed_count, r.failure_samples, r.executed_at
                     FROM data_quality_results r
                     JOIN data_quality_rules dq ON r.rule_id = dq.id
