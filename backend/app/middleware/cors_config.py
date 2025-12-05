@@ -23,7 +23,7 @@ def get_allowed_origins() -> List[str]:
         # In development, allow multiple origins
         return os.getenv(
             "ALLOWED_ORIGINS",
-            "http://localhost,http://localhost:3000,http://localhost:5173"
+            "http://localhost,http://localhost:3000,http://localhost:3001,http://localhost:5173"
         ).split(",")
 
 
