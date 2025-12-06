@@ -1,0 +1,267 @@
+/**
+ * DAMA Dashboard Styles
+ *
+ * Dark theme consistent with app design.
+ * V122: Created with corrections from Local AI output.
+ */
+
+/* Main container */
+.dama-dashboard {
+  background-color: #1e1e1e;
+  color: #e0e0e0;
+  padding: 20px;
+  border-radius: 8px;
+  min-height: 500px;
+}
+
+.dama-dashboard h2 {
+  margin: 0 0 20px 0;
+  color: #fff;
+  font-size: 1.5rem;
+}
+
+.dama-dashboard h3 {
+  margin: 0 0 15px 0;
+  color: #ccc;
+  font-size: 1.2rem;
+}
+
+.dama-dashboard.loading,
+.dama-dashboard.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+.dama-dashboard.error {
+  color: #dc3545;
+}
+
+/* Tab Navigation */
+.dama-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 10px;
+}
+
+.dama-tab {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #ccc;
+  padding: 8px 16px;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.dama-tab:hover {
+  background: #333;
+  color: #fff;
+}
+
+.dama-tab.active {
+  background: #3498db;
+  border-color: #3498db;
+  color: #fff;
+}
+
+/* Tab Content */
+.dama-tab-content {
+  background: #252525;
+  border-radius: 0 8px 8px 8px;
+  padding: 20px;
+  min-height: 400px;
+}
+
+/* Radar Chart Container */
+.radar-chart-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.radar-chart {
+  background: transparent;
+}
+
+.score-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+  width: 100%;
+  max-width: 500px;
+}
+
+.score-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+
+.dimension-name {
+  text-transform: capitalize;
+  color: #aaa;
+}
+
+.dimension-score {
+  font-weight: bold;
+}
+
+/* Heatmap Table */
+.heatmap-container {
+  overflow-x: auto;
+}
+
+.heatmap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+  border: 1px solid #333;
+  padding: 8px 10px;
+  text-align: center;
+}
+
+.heatmap-table th {
+  background-color: #2a2a2a;
+  color: #ccc;
+  font-weight: 600;
+}
+
+.heatmap-table td {
+  color: #000;
+  font-weight: bold;
+}
+
+.heatmap-table td:first-child {
+  background: #2a2a2a;
+  color: #e0e0e0;
+  text-align: left;
+  font-weight: normal;
+}
+
+.heatmap-table tbody tr:hover td:first-child {
+  background: #333;
+}
+
+/* Trend Chart Container */
+.trend-chart-container {
+  overflow-x: auto;
+}
+
+.trends-table {
+  margin-top: 15px;
+}
+
+/* Alerts Container */
+.alerts-container {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.alerts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alert-card {
+  background-color: #2a2a2a;
+  border-radius: 8px;
+  padding: 15px;
+  border-left: 4px solid #666;
+}
+
+.alert-card.severity-high {
+  border-left-color: #dc3545;
+  background-color: rgba(220, 53, 69, 0.1);
+}
+
+.alert-card.severity-medium {
+  border-left-color: #ffc107;
+  background-color: rgba(255, 193, 7, 0.1);
+}
+
+.alert-card.severity-low {
+  border-left-color: #28a745;
+  background-color: rgba(40, 167, 69, 0.1);
+}
+
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.alert-table {
+  font-weight: bold;
+  color: #fff;
+}
+
+.alert-severity {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: #333;
+}
+
+.severity-high .alert-severity {
+  background: #dc3545;
+  color: #fff;
+}
+
+.severity-medium .alert-severity {
+  background: #ffc107;
+  color: #000;
+}
+
+.severity-low .alert-severity {
+  background: #28a745;
+  color: #fff;
+}
+
+.alert-body {
+  color: #ccc;
+}
+
+.alert-score {
+  font-weight: bold;
+  color: #ff6b6b;
+}
+
+.no-alerts {
+  text-align: center;
+  color: #28a745;
+  padding: 40px;
+  font-size: 1.1rem;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .dama-tabs {
+    flex-wrap: wrap;
+  }
+
+  .score-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .heatmap-table {
+    font-size: 0.75rem;
+  }
+
+  .heatmap-table th,
+  .heatmap-table td {
+    padding: 5px;
+  }
+}
