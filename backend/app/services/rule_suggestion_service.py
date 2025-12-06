@@ -14,6 +14,9 @@ class RuleType(str, Enum):
     RANGE_CHECK = "RANGE_CHECK"
     PATTERN_CHECK = "PATTERN_CHECK"
     FOREIGN_KEY_CHECK = "FOREIGN_KEY_CHECK"
+    # V88: New DAMA dimension rule types
+    PRECISION_CHECK = "PRECISION_CHECK"  # Data at right level of detail
+    RELEVANCE_CHECK = "RELEVANCE_CHECK"  # Data appropriate for its use
 
 
 class Severity(str, Enum):
@@ -169,5 +172,35 @@ def suggest_rules_from_profile(table_profile: Dict[str, Any]) -> List[SuggestedR
                 confidence_score=0.7,
                 description=f"Column '{column_name}' appears to be a foreign key reference"
             ))
+
+        # V88: PRECISION_CHECK - Check for numeric columns with excessive precision
+        if data_type in ('numeric', 'decimal', 'real', 'double precision', 'float'):
+            # Check if values have excessive decimal places
+            avg_length = column.get("avg_length", 0)
+            if avg_length > 10:  # Potentially over-precise
+                suggested_rules.append(SuggestedRule(
+                    rule_type=RuleType.PRECISION_CHECK,
+                    table=table_name,
+                    column=column_name,
+                    condition=f"LENGTH(CAST({column_name} AS TEXT)) <= 10",
+                    severity=Severity.LOW,
+                    confidence_score=0.6,
+                    description=f"Column '{column_name}' may have excessive precision (avg length: {avg_length})"
+                ))
+
+        # V88: RELEVANCE_CHECK - Check for columns with low cardinality that might be obsolete
+        if row_count > 100 and unique_count is not None:
+            cardinality_ratio = unique_count / row_count if row_count > 0 else 0
+            # Very low cardinality in non-boolean columns suggests potential relevance issue
+            if cardinality_ratio < 0.01 and data_type not in ('boolean', 'bool'):
+                suggested_rules.append(SuggestedRule(
+                    rule_type=RuleType.RELEVANCE_CHECK,
+                    table=table_name,
+                    column=column_name,
+                    condition=f"-- Review: Column has very low cardinality ({unique_count}/{row_count})",
+                    severity=Severity.LOW,
+                    confidence_score=0.5,
+                    description=f"Column '{column_name}' has very low value diversity ({unique_count} unique in {row_count} rows) - consider if still relevant"
+                ))
 
     return suggested_rules

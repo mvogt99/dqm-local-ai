@@ -43,13 +43,17 @@ class Anomaly:
 
 @dataclass
 class RootCauseAnalysis:
-    """V90: Root cause analysis result - Feature parity with Expert AI."""
+    """V90: Root cause analysis result - Feature parity with Expert AI.
+    V88: Added dama_dimension for DAMA Data Quality framework alignment.
+    """
     result_id: int
     suggested_cause: str
     confidence_score: float
     ai_model: str
     supporting_evidence: List[str] = field(default_factory=list)
     remediation_steps: List[str] = field(default_factory=list)
+    dama_dimension: str = ""  # V88: DAMA dimension for the failing rule
+    dama_description: str = ""  # V88: DAMA dimension description
     created_at: datetime = None
 
     def __post_init__(self):
@@ -189,13 +193,18 @@ class AIAnalysisService:
                 rule_type, table_name, column_name, failed_count, total_count, samples
             )
 
+            # V88: Get DAMA dimension for the rule type
+            dama_dimension, dama_description = self._get_dama_dimension(rule_type)
+
             analysis = RootCauseAnalysis(
                 result_id=result_id,
                 suggested_cause=root_cause,
                 confidence_score=0.75,  # Default confidence
                 ai_model="local-analysis-v90",
                 supporting_evidence=evidence,
-                remediation_steps=remediation
+                remediation_steps=remediation,
+                dama_dimension=dama_dimension,
+                dama_description=dama_description
             )
 
             # Store the analysis
@@ -253,6 +262,17 @@ class AIAnalysisService:
 
         return cause, evidence, remediation
 
+    def _get_dama_dimension(self, rule_type: str) -> tuple:
+        """V88: Get DAMA dimension and description for a rule type."""
+        # Import the mappings from data_quality_rules
+        from app.services.data_quality_rules import RULE_TYPE_TO_DAMA, DAMA_DIMENSIONS
+
+        rule_type_lower = rule_type.lower()
+        dimension = RULE_TYPE_TO_DAMA.get(rule_type_lower, 'accuracy')
+        description = DAMA_DIMENSIONS.get(dimension, 'General data quality dimension')
+
+        return dimension, description
+
     async def _store_analysis(self, conn: asyncpg.Connection, analysis: RootCauseAnalysis):
         """Store analysis in database."""
         # Ensure table exists
@@ -275,7 +295,10 @@ class AIAnalysisService:
             json.dumps({
                 "cause": analysis.suggested_cause,
                 "evidence": analysis.supporting_evidence,
-                "remediation": analysis.remediation_steps
+                "remediation": analysis.remediation_steps,
+                # V88: Include DAMA dimension in stored analysis
+                "dama_dimension": analysis.dama_dimension,
+                "dama_description": analysis.dama_description
             }),
             analysis.confidence_score,
             analysis.ai_model,

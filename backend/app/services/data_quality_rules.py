@@ -49,7 +49,11 @@ RULE_TYPE_TO_DAMA = {
     'custom_sql': 'accuracy',
     'referential_check': 'integrity',
     'consistency_check': 'consistency',
-    'freshness_check': 'timeliness'
+    'freshness_check': 'timeliness',
+    # V88: Added remaining DAMA dimensions
+    'precision_check': 'precision',
+    'relevance_check': 'relevance',
+    'foreign_key_check': 'integrity'  # FK checks are also integrity
 }
 
 
